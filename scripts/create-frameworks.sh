@@ -18,19 +18,6 @@ FWNAME="OpenSSL"
 OUTPUT_DIR=$( mktemp -d )
 COMMON_SETUP=" -project ${SCRIPT_DIR}/../${FWNAME}.xcodeproj -configuration Release -quiet BUILD_LIBRARY_FOR_DISTRIBUTION=YES $XC_USER_DEFINED_VARS"
 
-# iOS
-DERIVED_DATA_PATH=$( mktemp -d )
-xcrun xcodebuild build \
-	$COMMON_SETUP \
-    -scheme "${FWNAME} (iOS)" \
-	-derivedDataPath "${DERIVED_DATA_PATH}" \
-	-destination 'generic/platform=iOS'
-
-rm -rf "${OUTPUT_DIR}/iphoneos"
-mkdir -p "${OUTPUT_DIR}/iphoneos"
-ditto "${DERIVED_DATA_PATH}/Build/Products/Release-iphoneos/${FWNAME}.framework" "${OUTPUT_DIR}/iphoneos/${FWNAME}.framework"
-rm -rf "${DERIVED_DATA_PATH}"
-
 # iOS Simulator
 DERIVED_DATA_PATH=$( mktemp -d )
 xcrun xcodebuild build \
@@ -46,10 +33,6 @@ rm -rf "${DERIVED_DATA_PATH}"
 
 #
 
-rm -rf "${BASE_PWD}/Frameworks/iphoneos"
-mkdir -p "${BASE_PWD}/Frameworks/iphoneos"
-ditto "${OUTPUT_DIR}/iphoneos/${FWNAME}.framework" "${BASE_PWD}/Frameworks/iphoneos/${FWNAME}.framework"
-
 rm -rf "${BASE_PWD}/Frameworks/iphonesimulator"
 mkdir -p "${BASE_PWD}/Frameworks/iphonesimulator"
 ditto "${OUTPUT_DIR}/iphonesimulator/${FWNAME}.framework" "${BASE_PWD}/Frameworks/iphonesimulator/${FWNAME}.framework"
@@ -58,7 +41,6 @@ ditto "${OUTPUT_DIR}/iphonesimulator/${FWNAME}.framework" "${BASE_PWD}/Framework
 rm -rf "${BASE_PWD}/Frameworks/${FWNAME}.xcframework"
 
 xcrun xcodebuild -quiet -create-xcframework \
-	-framework "${OUTPUT_DIR}/iphoneos/${FWNAME}.framework" \
 	-framework "${OUTPUT_DIR}/iphonesimulator/${FWNAME}.framework" \
 	-output "${BASE_PWD}/Frameworks/${FWNAME}.xcframework"
 

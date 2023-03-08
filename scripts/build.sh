@@ -145,25 +145,11 @@ build_ios() {
    # The World is not ready for arm64e!
    # build "arm64e" "iPhoneSimulator" ${TMP_BUILD_DIR} "iphonesimulator"
 
-   rm -rf "${SCRIPT_DIR}"/../{iphoneos/include,iphoneos/lib}
-   mkdir -p "${SCRIPT_DIR}"/../{iphoneos/include,iphoneos/lib}
-
-   build "armv7" "iPhoneOS" ${TMP_BUILD_DIR} "iphoneos"
-   build "armv7s" "iPhoneOS" ${TMP_BUILD_DIR} "iphoneos"
-   build "arm64" "iPhoneOS" ${TMP_BUILD_DIR} "iphoneos"
-
-   # The World is not ready for arm64e!
-   # build "arm64e" "iPhoneOS" ${TMP_BUILD_DIR} "iphoneos"
-
-   ditto "${TMP_BUILD_DIR}/${OPENSSL_VERSION}-iPhoneOS-arm64/include/openssl" "${SCRIPT_DIR}/../iphoneos/include/openssl"
-   cp -f "${SCRIPT_DIR}/../shim/shim.h" "${SCRIPT_DIR}/../iphoneos/include/openssl/shim.h"
-
    # Copy headers
    ditto "${TMP_BUILD_DIR}/${OPENSSL_VERSION}-iPhoneSimulator-arm64/include/openssl" "${SCRIPT_DIR}/../iphonesimulator/include/openssl"
    cp -f "${SCRIPT_DIR}/../shim/shim.h" "${SCRIPT_DIR}/../iphonesimulator/include/openssl/shim.h"
 
    # fix inttypes.h
-   find "${SCRIPT_DIR}/../iphoneos/include/openssl" -type f -name "*.h" -exec sed -i "" -e "s/include <inttypes\.h>/include <sys\/types\.h>/g" {} \;
    find "${SCRIPT_DIR}/../iphonesimulator/include/openssl" -type f -name "*.h" -exec sed -i "" -e "s/include <inttypes\.h>/include <sys\/types\.h>/g" {} \;
 
    local OPENSSLCONF_PATH="${SCRIPT_DIR}/../iphonesimulator/include/openssl/opensslconf.h"
@@ -178,20 +164,6 @@ build_ios() {
    # cat ${TMP_BUILD_DIR}/${OPENSSL_VERSION}-iPhoneSimulator-arm64e/include/openssl/opensslconf.h >> ${OPENSSLCONF_PATH}
    echo "#elif defined(__APPLE__) && defined (__arm64__)" >> ${OPENSSLCONF_PATH}
    cat ${TMP_BUILD_DIR}/${OPENSSL_VERSION}-iPhoneSimulator-arm64/include/openssl/opensslconf.h >> ${OPENSSLCONF_PATH}
-   echo "#endif" >> ${OPENSSLCONF_PATH}
-
-   OPENSSLCONF_PATH="${SCRIPT_DIR}/../iphoneos/include/openssl/opensslconf.h"
-   echo "#if defined(__APPLE__) && defined (__i386__)" > ${OPENSSLCONF_PATH}
-   echo "#elif defined(__APPLE__) && defined (__x86_64__)" >> ${OPENSSLCONF_PATH}
-   echo "#elif defined(__APPLE__) && defined (__arm__) && defined (__ARM_ARCH_7A__)" >> ${OPENSSLCONF_PATH}
-   cat ${TMP_BUILD_DIR}/${OPENSSL_VERSION}-iPhoneOS-armv7/include/openssl/opensslconf.h >> ${OPENSSLCONF_PATH}
-   echo "#elif defined(__APPLE__) && defined (__arm__) && defined (__ARM_ARCH_7S__)" >> ${OPENSSLCONF_PATH}
-   cat ${TMP_BUILD_DIR}/${OPENSSL_VERSION}-iPhoneOS-armv7s/include/openssl/opensslconf.h >> ${OPENSSLCONF_PATH}
-   # The World is not ready for arm64e!
-   # echo "#elif defined(__APPLE__) && defined (__arm64e__)" >> ${OPENSSLCONF_PATH}
-   # cat ${TMP_BUILD_DIR}/${OPENSSL_VERSION}-iPhoneOS-arm64e/include/openssl/opensslconf.h >> ${OPENSSLCONF_PATH}
-   echo "#elif defined(__APPLE__) && defined (__arm64__)" >> ${OPENSSLCONF_PATH}
-   cat ${TMP_BUILD_DIR}/${OPENSSL_VERSION}-iPhoneOS-arm64/include/openssl/opensslconf.h >> ${OPENSSLCONF_PATH}
    echo "#endif" >> ${OPENSSLCONF_PATH}
 
    rm -rf ${TMP_BUILD_DIR}
