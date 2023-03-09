@@ -140,13 +140,13 @@ build_ios() {
 
    # build "i386" "iPhoneSimulator" ${TMP_BUILD_DIR} "iphonesimulator"
    build "x86_64" "iPhoneSimulator" ${TMP_BUILD_DIR} "iphonesimulator"
-   build "arm64" "iPhoneSimulator" ${TMP_BUILD_DIR} "iphonesimulator"
+   # build "arm64" "iPhoneSimulator" ${TMP_BUILD_DIR} "iphonesimulator"
 
    # The World is not ready for arm64e!
    # build "arm64e" "iPhoneSimulator" ${TMP_BUILD_DIR} "iphonesimulator"
 
    # Copy headers
-   ditto "${TMP_BUILD_DIR}/${OPENSSL_VERSION}-iPhoneSimulator-arm64/include/openssl" "${SCRIPT_DIR}/../iphonesimulator/include/openssl"
+   ditto "${TMP_BUILD_DIR}/${OPENSSL_VERSION}-iPhoneSimulator-x86_64/include/openssl" "${SCRIPT_DIR}/../iphonesimulator/include/openssl"
    cp -f "${SCRIPT_DIR}/../shim/shim.h" "${SCRIPT_DIR}/../iphonesimulator/include/openssl/shim.h"
 
    # fix inttypes.h
@@ -163,7 +163,7 @@ build_ios() {
    # echo "#elif defined(__APPLE__) && defined (__arm64e__)" >> ${OPENSSLCONF_PATH}
    # cat ${TMP_BUILD_DIR}/${OPENSSL_VERSION}-iPhoneSimulator-arm64e/include/openssl/opensslconf.h >> ${OPENSSLCONF_PATH}
    echo "#elif defined(__APPLE__) && defined (__arm64__)" >> ${OPENSSLCONF_PATH}
-   cat ${TMP_BUILD_DIR}/${OPENSSL_VERSION}-iPhoneSimulator-arm64/include/openssl/opensslconf.h >> ${OPENSSLCONF_PATH}
+   # cat ${TMP_BUILD_DIR}/${OPENSSL_VERSION}-iPhoneSimulator-arm64/include/openssl/opensslconf.h >> ${OPENSSLCONF_PATH}
    echo "#endif" >> ${OPENSSLCONF_PATH}
 
    rm -rf ${TMP_BUILD_DIR}
