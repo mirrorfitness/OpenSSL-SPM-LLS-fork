@@ -138,7 +138,7 @@ build_ios() {
    rm -rf "${SCRIPT_DIR}"/../{iphonesimulator/include,iphonesimulator/lib}
    mkdir -p "${SCRIPT_DIR}"/../{iphonesimulator/include,iphonesimulator/lib}
 
-   build "i386" "iPhoneSimulator" ${TMP_BUILD_DIR} "iphonesimulator"
+   # build "i386" "iPhoneSimulator" ${TMP_BUILD_DIR} "iphonesimulator"
    build "x86_64" "iPhoneSimulator" ${TMP_BUILD_DIR} "iphonesimulator"
    build "arm64" "iPhoneSimulator" ${TMP_BUILD_DIR} "iphonesimulator"
 
@@ -154,7 +154,7 @@ build_ios() {
 
    local OPENSSLCONF_PATH="${SCRIPT_DIR}/../iphonesimulator/include/openssl/opensslconf.h"
    echo "#if defined(__APPLE__) && defined (__i386__)" > ${OPENSSLCONF_PATH}
-   cat ${TMP_BUILD_DIR}/${OPENSSL_VERSION}-iPhoneSimulator-i386/include/openssl/opensslconf.h >> ${OPENSSLCONF_PATH}
+   # cat ${TMP_BUILD_DIR}/${OPENSSL_VERSION}-iPhoneSimulator-i386/include/openssl/opensslconf.h >> ${OPENSSLCONF_PATH}
    echo "#elif defined(__APPLE__) && defined (__x86_64__)" >> ${OPENSSLCONF_PATH}
    cat ${TMP_BUILD_DIR}/${OPENSSL_VERSION}-iPhoneSimulator-x86_64/include/openssl/opensslconf.h >> ${OPENSSLCONF_PATH}
    echo "#elif defined(__APPLE__) && defined (__arm__) && defined (__ARM_ARCH_7A__)" >> ${OPENSSLCONF_PATH}
