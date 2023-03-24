@@ -1,9 +1,18 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
-openssl_clone_path = '/Users/ansonjablinski/Developer/Repositories/3rdPARTY/openssl'
+spm_repo_name = 'OpenSSL-SPM-LLS-fork'
+openssl_clone_path = '../openssl-LLS-fork'
 patch_path = 'patches/openssl-1.1.1s.patch'
 magic_git_replacement_token = '<< to be replaced by prep_patch.rb in OpenSSL-SPM-LLS-fork >>'
+
+unless `pwd`.chomp.end_with? spm_repo_name
+  raise "Please run this script from the root of #{spm_repo_name}. (Did you change the repo name when cloning?)"
+end
+
+unless Dir.exist? openssl_clone_path
+  raise "Couldn't find openssl-LLS-fork at #{openssl_clone_path}"
+end
 
 diff = Dir.chdir(openssl_clone_path) do
   `git diff OpenSSL_1_1_1s..head`
