@@ -1,9 +1,13 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
+# Will change on occasion
+patch_path = 'patches/openssl-1.1.1s.patch'
+openssl_tag_name = 'OpenSSL_1_1_1s'
+
+# Won't change often, if at all
 spm_repo_name = 'OpenSSL-SPM-LLS-fork'
 openssl_clone_path = '../openssl-LLS-fork'
-patch_path = 'patches/openssl-1.1.1s.patch'
 magic_git_replacement_token = '<< to be replaced by prep_patch.rb in OpenSSL-SPM-LLS-fork >>'
 
 unless `pwd`.chomp.end_with? spm_repo_name
@@ -15,7 +19,7 @@ unless Dir.exist? openssl_clone_path
 end
 
 diff = Dir.chdir(openssl_clone_path) do
-  `git diff OpenSSL_1_1_1s..head`
+  `git diff #{openssl_tag_name}..head`
 end
 
 diff_lines = diff.split("\n")
