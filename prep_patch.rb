@@ -19,7 +19,7 @@ unless Dir.exist? openssl_clone_path
 end
 
 diff = Dir.chdir(openssl_clone_path) do
-  `git diff #{openssl_tag_name}..head`
+  `git diff #{openssl_tag_name}..head -- . ':!README'`
 end
 
 diff_lines = diff.split("\n")
