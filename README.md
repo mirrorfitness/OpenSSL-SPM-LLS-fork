@@ -1,3 +1,9 @@
+# Hello, lululemon Studio!
+
+For more information about this fork, please see:
+
+- https://github.com/mirrorfitness/mirrorlink-ios/blob/main/README_SSL.md
+
 # OpenSSL-Universal
 
 OpenSSL [CocoaPods](https://cocoapods.org/), [Carthage](https://github.com/Carthage/Carthage) and [Swift Package Manager](https://swift.org/package-manager/) package for iOS and macOS. Complete solution to OpenSSL on iOS and macOS. Package comes with precompiled libraries, and includes a script to build newer versions if necessary.
