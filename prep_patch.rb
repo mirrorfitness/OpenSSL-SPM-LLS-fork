@@ -2,12 +2,13 @@
 # frozen_string_literal: true
 
 # Will change on occasion
-patch_path = 'patches/openssl-1.1.1s.patch'
+patch_path = './patches/openssl-1.1.1s.patch'
 openssl_tag_name = 'OpenSSL_1_1_1s'
 
 # Won't change often, if at all
 spm_repo_name = 'OpenSSL-SPM-LLS-fork'
-openssl_clone_path = '../openssl-LLS-fork'
+openssl_repo_name = 'openssl-LLS-fork'
+openssl_clone_path = "../#{openssl_repo_name}"
 magic_git_replacement_token = '<< to be replaced by prep_patch.rb in OpenSSL-SPM-LLS-fork >>'
 
 unless `pwd`.chomp.end_with? spm_repo_name
@@ -16,6 +17,10 @@ end
 
 unless Dir.exist? openssl_clone_path
   raise "Couldn't find openssl-LLS-fork at #{openssl_clone_path}"
+end
+
+openssl_git_revision = Dir.chdir(openssl_clone_path) do
+  `git rev-parse HEAD`.chomp
 end
 
 diff = Dir.chdir(openssl_clone_path) do
@@ -38,9 +43,6 @@ File.open(patch_path, 'w') do |f|
     end
 
     if l.include? magic_git_replacement_token
-      openssl_git_revision = Dir.chdir(openssl_clone_path) do
-        `git rev-parse HEAD`.chomp
-      end
       l.gsub! magic_git_replacement_token, openssl_git_revision
     end
 
@@ -48,7 +50,11 @@ File.open(patch_path, 'w') do |f|
   end
 end
 
-puts 'Patch look good?'
+puts "You're building from #{openssl_repo_name} @ #{openssl_git_revision}."
+Dir.chdir(openssl_clone_path) do
+  system "git show -s #{openssl_git_revision}"
+end
+puts "Is that correct? And does the patch at #{patch_path} look good?"
 puts '(Enter to continue, Ctrl+C to abort.)'
 print '> '
 $stdin.gets
