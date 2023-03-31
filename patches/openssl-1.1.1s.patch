@@ -1,0 +1,400 @@
+--- a/crypto/ocsp/ocsp_ht.c
++++ b/crypto/ocsp/ocsp_ht.c
+@@ -31,7 +31,7 @@ struct ocsp_req_ctx_st {
+     unsigned long max_resp_len; /* Maximum length of response */
+ };
+ 
+-#define OCSP_MAX_RESP_LENGTH    (100 * 1024)
++#define OCSP_MAX_RESP_LENGTH    (10 * 1024 * 1024) /* 10 MB for extreme future-proofing */
+ #define OCSP_MAX_LINE_LEN       4096;
+ 
+ /* OCSP states */
+@@ -80,6 +80,7 @@ OCSP_REQ_CTX *OCSP_REQ_CTX_new(BIO *io, int maxline)
+         OCSP_REQ_CTX_free(rctx);
+         return NULL;
+     }
++    printf(LLS_LOG_PREFIX "OCSP_REQ_CTX %p initialized network request object via OCSP_REQ_CTX_new()\n", rctx);
+     return rctx;
+ }
+ 
+@@ -148,6 +149,7 @@ int OCSP_REQ_CTX_http(OCSP_REQ_CTX *rctx, const char *op, const char *path)
+     if (BIO_printf(rctx->mem, http_hdr, op, path) <= 0)
+         return 0;
+     rctx->state = OHS_HTTP_HEADER;
++    printf(LLS_LOG_PREFIX "OCSP_REQ_CTX %p request set to %s %s via OCSP_REQ_CTX_http()\n", rctx, op, path);
+     return 1;
+ }
+ 
+@@ -173,6 +175,7 @@ int OCSP_REQ_CTX_add1_header(OCSP_REQ_CTX *rctx,
+     if (BIO_write(rctx->mem, "\r\n", 2) != 2)
+         return 0;
+     rctx->state = OHS_HTTP_HEADER;
++    printf(LLS_LOG_PREFIX "OCSP_REQ_CTX %p request set header %s to %s via OCSP_REQ_CTX_add1_header()\n", rctx, name, value);
+     return 1;
+ }
+ 
+@@ -271,6 +274,7 @@ static int parse_http_line1(char *line)
+ 
+ int OCSP_REQ_CTX_nbio(OCSP_REQ_CTX *rctx)
+ {
++    printf(LLS_LOG_PREFIX "OCSP_REQ_CTX %p request is being attempted via OCSP_REQ_CTX_nbio()\n", rctx);
+     int i, n;
+     const unsigned char *p;
+  next_io:
+@@ -440,6 +444,7 @@ int OCSP_REQ_CTX_nbio(OCSP_REQ_CTX *rctx)
+             }
+ 
+             if (rctx->asn1_len > rctx->max_resp_len) {
++                printf(LLS_LOG_PREFIX "OCSP_REQ_CTX %p response is larger than the max response size (%lu > %lu), so we're going to get a CRL error from OCSP_REQ_CTX_nbio()\n", rctx, rctx->asn1_len, rctx->max_resp_len);
+                 rctx->state = OHS_ERROR;
+                 return 0;
+             }
+--- a/crypto/x509/build.info
++++ b/crypto/x509/build.info
+@@ -7,4 +7,5 @@ SOURCE[../../libcrypto]=\
+         x509type.c x509_meth.c x509_lu.c x_all.c x509_txt.c \
+         x509_trs.c by_file.c by_dir.c x509_vpm.c \
+         x_crl.c t_crl.c x_req.c t_req.c x_x509.c t_x509.c \
+-        x_pubkey.c x_x509a.c x_attrib.c x_exten.c x_name.c
++        x_pubkey.c x_x509a.c x_attrib.c x_exten.c x_name.c \
++        ../../apps/bf_prefix.c
+--- a/crypto/x509/x509_vfy.c
++++ b/crypto/x509/x509_vfy.c
+@@ -25,6 +25,9 @@
+ #include "crypto/x509.h"
+ #include "x509_local.h"
+ 
++/* Error buffer for CRL fetching */
++BIO *lulu_studio__crl_bio_err = NULL;
++
+ /* CRL score values */
+ 
+ /* No unhandled critical extensions */
+@@ -253,6 +256,7 @@ static int verify_chain(X509_STORE_CTX *ctx)
+ 
+ int X509_verify_cert(X509_STORE_CTX *ctx)
+ {
++    printf(LLS_LOG_PREFIX "X509_verify_cert() called\n");
+     SSL_DANE *dane = ctx->dane;
+     int ret;
+ 
+@@ -2545,6 +2549,298 @@ X509_STORE_CTX_lookup_crls_fn X509_STORE_CTX_get_lookup_crls(X509_STORE_CTX *ctx
+     return ctx->lookup_crls;
+ }
+ 
++/* Begin special code for automatically fetching CRLs */
++/* 
++ * This is copied from `apps.c`.
++ * I would have preferred if we could simply include the necessary source files instead of manually copying everything over.
++ * However, trying to do this took a very long time and led to lots of extra files being included in compilation.
++ * Especially since the documentation comment on `crls_http_cb` specifically mentions that the code was not intended for production
++ * (don't worry, I am aware of this and I think it's safe), I didn't want to run the risk of including some source file that
++ * provides a macro that breaks something in a subtle way that we'd never notice.
++ * Manually copying over the code we need is ugly and tedious, but the benefit is that we're not including anything that's unexpected.
++ */
++
++#include <apps/apps.h>
++#include <openssl/ocsp.h>
++#include <openssl/pem.h>
++
++#if !defined(OPENSSL_NO_OCSP) && !defined(OPENSSL_NO_SOCK)
++static int lulu_studio_copies__load_cert_crl_http(const char *url, X509 **pcert, X509_CRL **pcrl)
++{
++    char *host = NULL, *port = NULL, *path = NULL;
++    BIO *bio = NULL;
++    OCSP_REQ_CTX *rctx = NULL;
++    int use_ssl, rv = 0;
++    if (!OCSP_parse_url(url, &host, &port, &path, &use_ssl))
++        goto err;
++    if (use_ssl) {
++        BIO_puts(lulu_studio__crl_bio_err, "https not supported\n");
++        goto err;
++    }
++    bio = BIO_new_connect(host);
++    if (!bio || !BIO_set_conn_port(bio, port))
++        goto err;
++    rctx = OCSP_REQ_CTX_new(bio, 1024);
++    if (rctx == NULL)
++        goto err;
++    if (!OCSP_REQ_CTX_http(rctx, "GET", path))
++        goto err;
++    if (!OCSP_REQ_CTX_add1_header(rctx, "Host", host))
++        goto err;
++    if (pcert) {
++        do {
++            rv = X509_http_nbio(rctx, pcert);
++        } while (rv == -1);
++    } else {
++        do {
++            rv = X509_CRL_http_nbio(rctx, pcrl);
++        } while (rv == -1);
++    }
++
++ err:
++    OPENSSL_free(host);
++    OPENSSL_free(path);
++    OPENSSL_free(port);
++    BIO_free_all(bio);
++    OCSP_REQ_CTX_free(rctx);
++    if (rv != 1) {
++        BIO_printf(lulu_studio__crl_bio_err, "Error loading %s from %s\n",
++                   pcert ? "certificate" : "CRL", url);
++        ERR_print_errors(lulu_studio__crl_bio_err);
++    }
++    return rv;
++}
++#endif
++
++/*
++ * Centralized handling if input and output files with format specification
++ * The format is meant to show what the input and output is supposed to be,
++ * and is therefore a show of intent more than anything else.  However, it
++ * does impact behavior on some platform, such as differentiating between
++ * text and binary input/output on non-Unix platforms
++ */
++static int lulu_studio_copies__istext(int format)
++{
++    return (format & B_FORMAT_TEXT) == B_FORMAT_TEXT;
++}
++
++static const char *lulu_studio_copies__modestr(char mode, int format)
++{
++    OPENSSL_assert(mode == 'a' || mode == 'r' || mode == 'w');
++
++    switch (mode) {
++    case 'a':
++        return lulu_studio_copies__istext(format) ? "a" : "ab";
++    case 'r':
++        return lulu_studio_copies__istext(format) ? "r" : "rb";
++    case 'w':
++        return lulu_studio_copies__istext(format) ? "w" : "wb";
++    }
++    /* The assert above should make sure we never reach this point */
++    return NULL;
++}
++
++static const char *lulu_studio_copies__modeverb(char mode)
++{
++    switch (mode) {
++    case 'a':
++        return "appending";
++    case 'r':
++        return "reading";
++    case 'w':
++        return "writing";
++    }
++    return "(doing something)";
++}
++
++BIO *lulu_studio_copies__dup_bio_in(int format)
++{
++    return BIO_new_fp(stdin,
++                      BIO_NOCLOSE | (lulu_studio_copies__istext(format) ? BIO_FP_TEXT : 0));
++}
++
++static BIO_METHOD *lulu_studio__prefix_method = NULL;
++
++BIO *lulu_studio_copies__dup_bio_out(int format)
++{
++    BIO *b = BIO_new_fp(stdout,
++                        BIO_NOCLOSE | (lulu_studio_copies__istext(format) ? BIO_FP_TEXT : 0));
++    void *prefix = NULL;
++
++#ifdef OPENSSL_SYS_VMS
++    if (lulu_studio_copies__istext(format))
++        b = BIO_push(BIO_new(BIO_f_linebuffer()), b);
++#endif
++
++    if (lulu_studio_copies__istext(format) && (prefix = getenv("HARNESS_OSSL_PREFIX")) != NULL) {
++        if (lulu_studio__prefix_method == NULL)
++            lulu_studio__prefix_method = apps_bf_prefix();
++        b = BIO_push(BIO_new(lulu_studio__prefix_method), b);
++        BIO_ctrl(b, PREFIX_CTRL_SET_PREFIX, 0, prefix);
++    }
++
++    return b;
++}
++
++static BIO *lulu_studio_copies__bio_open_default_(const char *filename, char mode, int format,
++                              int quiet)
++{
++    BIO *ret;
++
++    if (filename == NULL || strcmp(filename, "-") == 0) {
++        ret = mode == 'r' ? lulu_studio_copies__dup_bio_in(format) : lulu_studio_copies__dup_bio_out(format);
++        if (quiet) {
++            ERR_clear_error();
++            return ret;
++        }
++        if (ret != NULL)
++            return ret;
++        BIO_printf(lulu_studio__crl_bio_err,
++                   "Can't open %s, %s\n",
++                   mode == 'r' ? "stdin" : "stdout", strerror(errno));
++    } else {
++        ret = BIO_new_file(filename, lulu_studio_copies__modestr(mode, format));
++        if (quiet) {
++            ERR_clear_error();
++            return ret;
++        }
++        if (ret != NULL)
++            return ret;
++        BIO_printf(lulu_studio__crl_bio_err,
++                   "Can't open %s for %s, %s\n",
++                   filename, lulu_studio_copies__modeverb(mode), strerror(errno));
++    }
++    ERR_print_errors(lulu_studio__crl_bio_err);
++    return NULL;
++}
++
++BIO *lulu_studio_copies__bio_open_default(const char *filename, char mode, int format)
++{
++    return lulu_studio_copies__bio_open_default_(filename, mode, format, 0);
++}
++
++X509_CRL *lulu_studio_copies__load_crl(const char *infile, int format)
++{
++    X509_CRL *x = NULL;
++    BIO *in = NULL;
++
++    if (format == FORMAT_HTTP) {
++#if !defined(OPENSSL_NO_OCSP) && !defined(OPENSSL_NO_SOCK)
++        lulu_studio_copies__load_cert_crl_http(infile, NULL, &x);
++#endif
++        return x;
++    }
++
++    in = lulu_studio_copies__bio_open_default(infile, 'r', format);
++    if (in == NULL)
++        goto end;
++    if (format == FORMAT_ASN1) {
++        x = d2i_X509_CRL_bio(in, NULL);
++    } else if (format == FORMAT_PEM) {
++        x = PEM_read_bio_X509_CRL(in, NULL, NULL, NULL);
++    } else {
++        BIO_printf(lulu_studio__crl_bio_err, "bad input format specified for input crl\n");
++        goto end;
++    }
++    if (x == NULL) {
++        BIO_printf(lulu_studio__crl_bio_err, "unable to load CRL\n");
++        ERR_print_errors(lulu_studio__crl_bio_err);
++        goto end;
++    }
++
++ end:
++    BIO_free(in);
++    return x;
++}
++
++/* Get first http URL from a DIST_POINT structure */
++static const char *lulu_studio_copies__get_dp_url(DIST_POINT *dp)
++{
++    GENERAL_NAMES *gens;
++    GENERAL_NAME *gen;
++    int i, gtype;
++    ASN1_STRING *uri;
++    if (!dp->distpoint || dp->distpoint->type != 0)
++        return NULL;
++    gens = dp->distpoint->name.fullname;
++    for (i = 0; i < sk_GENERAL_NAME_num(gens); i++) {
++        gen = sk_GENERAL_NAME_value(gens, i);
++        uri = GENERAL_NAME_get0_value(gen, &gtype);
++        if (gtype == GEN_URI && ASN1_STRING_length(uri) > 6) {
++            const char *uptr = (const char *)ASN1_STRING_get0_data(uri);
++            if (strncmp(uptr, "http://", 7) == 0)
++                return uptr;
++        }
++    }
++    return NULL;
++}
++
++/*
++ * Look through a CRLDP structure and attempt to find an http URL to
++ * downloads a CRL from.
++ */
++static X509_CRL *lulu_studio_copies__load_crl_crldp(STACK_OF(DIST_POINT) *crldp)
++{
++    int i;
++    const char *urlptr = NULL;
++    for (i = 0; i < sk_DIST_POINT_num(crldp); i++) {
++        DIST_POINT *dp = sk_DIST_POINT_value(crldp, i);
++        urlptr = lulu_studio_copies__get_dp_url(dp);
++        if (urlptr)
++            return lulu_studio_copies__load_crl(urlptr, FORMAT_HTTP);
++    }
++    return NULL;
++}
++
++/*
++ * Example of downloading CRLs from CRLDP: not usable for real world as it
++ * always downloads, doesn't support non-blocking I/O and doesn't cache
++ * anything.
++ * 
++ * lululemon Studio note: Good news is, we don't mind if we block, and we
++ * can live with a lack of caching for now.
++ */
++static STACK_OF(X509_CRL) *lulu_studio_copies__crls_http_cb(X509_STORE_CTX *ctx, X509_NAME *nm)
++{
++    X509 *x;
++    STACK_OF(X509_CRL) *crls = NULL;
++    X509_CRL *crl;
++    STACK_OF(DIST_POINT) *crldp;
++
++    crls = sk_X509_CRL_new_null();
++    if (!crls)
++        return NULL;
++    x = X509_STORE_CTX_get_current_cert(ctx);
++    crldp = X509_get_ext_d2i(x, NID_crl_distribution_points, NULL, NULL);
++    crl = lulu_studio_copies__load_crl_crldp(crldp);
++    sk_DIST_POINT_pop_free(crldp, DIST_POINT_free);
++    if (!crl) {
++        sk_X509_CRL_free(crls);
++        return NULL;
++    }
++    sk_X509_CRL_push(crls, crl);
++    /* Try to download delta CRL */
++    crldp = X509_get_ext_d2i(x, NID_freshest_crl, NULL, NULL);
++    crl = lulu_studio_copies__load_crl_crldp(crldp);
++    sk_DIST_POINT_pop_free(crldp, DIST_POINT_free);
++    if (crl)
++        sk_X509_CRL_push(crls, crl);
++    return crls;
++}
++
++void lulu_studio__X509_STORE_enable_fetching_crls(X509_STORE *st)
++{
++    if (lulu_studio__crl_bio_err == NULL) {
++        /* Copied from `apps.c` `dup_bio_err()` */
++        lulu_studio__crl_bio_err = BIO_new_fp(stderr,
++                                              BIO_NOCLOSE | BIO_FP_TEXT);
++    }
++    
++    X509_STORE_set_lookup_crls_cb(st, lulu_studio_copies__crls_http_cb);
++}
++
++/* End special code for automatically fetching CRLs */
++
+ X509_STORE_CTX_cleanup_fn X509_STORE_CTX_get_cleanup(X509_STORE_CTX *ctx)
+ {
+     return ctx->cleanup;
+--- a/include/openssl/x509_vfy.h
++++ b/include/openssl/x509_vfy.h
+@@ -44,6 +44,9 @@ The X509_STORE then calls a function to actually verify the
+ certificate chain.
+ */
+ 
++#define LLS_GIT_REVISION "c6c132b195ab7658c70dda555fb1ba0b828d2b7e"
++#define LLS_LOG_PREFIX "lululemon Studio fork of " OPENSSL_VERSION_TEXT " @ " LLS_GIT_REVISION ": "
++
+ typedef enum {
+     X509_LU_NONE = 0,
+     X509_LU_X509, X509_LU_CRL
+@@ -323,6 +326,8 @@ void X509_STORE_set_lookup_crls(X509_STORE *ctx,
+ #define X509_STORE_set_lookup_crls_cb(ctx, func) \
+     X509_STORE_set_lookup_crls((ctx), (func))
+ X509_STORE_CTX_lookup_crls_fn X509_STORE_get_lookup_crls(X509_STORE *ctx);
++/* This uses code borrowed from the CLI tools to automatically download CRLs. */
++void lulu_studio__X509_STORE_enable_fetching_crls(X509_STORE *st);
+ void X509_STORE_set_cleanup(X509_STORE *ctx,
+                             X509_STORE_CTX_cleanup_fn cleanup);
+ X509_STORE_CTX_cleanup_fn X509_STORE_get_cleanup(X509_STORE *ctx);
