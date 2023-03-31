@@ -42,9 +42,7 @@ File.open(patch_path, 'w') do |f|
       next
     end
 
-    if l.include? magic_git_replacement_token
-      l.gsub! magic_git_replacement_token, openssl_git_revision
-    end
+    l.gsub! magic_git_replacement_token, openssl_git_revision
 
     f.puts l
   end
